@@ -305,7 +305,10 @@ async def paper_detail(ctx: Context, paper_id: str) -> Dict[str, Any]:
 
             # 如果有DOI，添加DOI URL
             if "doi" in detail and "doi_url" not in detail:
-                detail["doi_url"] = f"https://doi.org/{detail['doi']}"
+                doi_value = detail["doi"]
+                if doi_value.startswith("https://doi.org/"):
+                    doi_value = doi_value[len("https://doi.org/") :]
+                detail["doi_url"] = f"https://doi.org/{doi_value}"
 
             return {"status": "success", "detail": detail}
         else:

@@ -156,24 +156,25 @@ async def search_scholar(
         # 设置电子邮件参数（礼貌请求）
         email_param = f"&mailto={EMAIL}" if EMAIL else ""
 
+        # Build year filter components
+        year_filters = []
+        if year_start is not None:
+            year_filters.append(f"publication_year:>{year_start-1}")
+        if year_end is not None:
+            year_filters.append(f"publication_year:<{year_end+1}")
+
         # 搜索参数设置
         if fuzzy_search:
             # 模糊搜索：使用标题、摘要或关键词匹配
             search_url = f"{OPENALEX_API}/works?search={encoded_query}{email_param}&per_page={count*2}"
+            # Year filters go in a separate filter= param (no existing filter)
+            if year_filters:
+                search_url += f"&filter={','.join(year_filters)}"
         else:
             # 精确搜索：在标题中搜索
-            search_url = f"{OPENALEX_API}/works?filter=title.search:{encoded_query}{email_param}&per_page={count*2}"
-
-        # 添加年份过滤条件
-        if year_start is not None or year_end is not None:
-            year_filter = ""
-            if year_start is not None and year_end is not None:
-                year_filter = f"&filter=publication_year:>{year_start-1},publication_year:<{year_end+1}"
-            elif year_start is not None:
-                year_filter = f"&filter=publication_year:>{year_start-1}"
-            elif year_end is not None:
-                year_filter = f"&filter=publication_year:<{year_end+1}"
-            search_url += year_filter
+            # Combine title search and year filters into a single filter= param
+            all_filters = [f"title.search:{encoded_query}"] + year_filters
+            search_url = f"{OPENALEX_API}/works?filter={','.join(all_filters)}{email_param}&per_page={count*2}"
 
         # 添加排序方式
         if sort_by == "citations":
@@ -226,8 +227,13 @@ async def search_scholar(
 
                     # 处理DOI信息
                     if paper_data.get("doi"):
-                        paper["doi"] = paper_data["doi"]
-                        paper["doi_url"] = f"https://doi.org/{paper['doi']}"
+                        doi_value = paper_data["doi"]
+                        # OpenAlex returns DOI as full URL (e.g. "https://doi.org/10.1234/...")
+                        # Strip the prefix to get the bare DOI identifier
+                        if doi_value.startswith("https://doi.org/"):
+                            doi_value = doi_value[len("https://doi.org/") :]
+                        paper["doi"] = doi_value
+                        paper["doi_url"] = f"https://doi.org/{doi_value}"
 
                     # 丰富摘要信息
                     paper = await enrich_abstract(paper)
@@ -306,8 +312,13 @@ async def get_paper_detail(paper_id: str) -> Optional[Dict[str, Any]]:
 
                 # 处理DOI信息
                 if data.get("doi"):
-                    result["doi"] = data["doi"]
-                    result["doi_url"] = f"https://doi.org/{result['doi']}"
+                    doi_value = data["doi"]
+                    # OpenAlex returns DOI as full URL (e.g. "https://doi.org/10.1234/...")
+                    # Strip the prefix to get the bare DOI identifier
+                    if doi_value.startswith("https://doi.org/"):
+                        doi_value = doi_value[len("https://doi.org/") :]
+                    result["doi"] = doi_value
+                    result["doi_url"] = f"https://doi.org/{doi_value}"
 
                 # 添加PDF链接（如果有）
                 if data.get("open_access", {}).get("oa_url"):
@@ -442,8 +453,13 @@ async def get_paper_references(
 
                     # 处理DOI信息
                     if paper_data.get("doi"):
-                        paper["doi"] = paper_data["doi"]
-                        paper["doi_url"] = f"https://doi.org/{paper['doi']}"
+                        doi_value = paper_data["doi"]
+                        # OpenAlex returns DOI as full URL (e.g. "https://doi.org/10.1234/...")
+                        # Strip the prefix to get the bare DOI identifier
+                        if doi_value.startswith("https://doi.org/"):
+                            doi_value = doi_value[len("https://doi.org/") :]
+                        paper["doi"] = doi_value
+                        paper["doi_url"] = f"https://doi.org/{doi_value}"
 
                     results.append(paper)
 
@@ -570,7 +586,7 @@ async def parse_profile(
     """
     try:
         # 设置电子邮件参数（礼貌请求）
-        email_param = f"?mailto={EMAIL}" if EMAIL else ""
+        mailto_value = f"mailto={EMAIL}" if EMAIL else ""
 
         # 处理谷歌学术ID
         if profile_id.startswith("google:"):
@@ -588,7 +604,8 @@ async def parse_profile(
 
         # 获取作者信息
         async with httpx.AsyncClient(timeout=15.0) as client:
-            author_url = f"{OPENALEX_API}/authors/{openalex_id}{email_param}"
+            author_email = f"?{mailto_value}" if mailto_value else ""
+            author_url = f"{OPENALEX_API}/authors/{openalex_id}{author_email}"
             author_response = await client.get(author_url)
 
             if author_response.status_code != 200:
@@ -598,7 +615,8 @@ async def parse_profile(
             author_data = author_response.json()
 
             # 获取作者论文
-            papers_url = f"{OPENALEX_API}/works?filter=author.id:{author_data['id']}{email_param}&per_page={top_n*2}"
+            papers_email = f"&{mailto_value}" if mailto_value else ""
+            papers_url = f"{OPENALEX_API}/works?filter=author.id:{author_data['id']}{papers_email}&per_page={top_n*2}"
 
             # 添加排序方式
             if sort_by == "citations":
@@ -653,8 +671,13 @@ async def parse_profile(
 
                 # 处理DOI信息
                 if paper_data.get("doi"):
-                    paper["doi"] = paper_data["doi"]
-                    paper["doi_url"] = f"https://doi.org/{paper['doi']}"
+                    doi_value = paper_data["doi"]
+                    # OpenAlex returns DOI as full URL (e.g. "https://doi.org/10.1234/...")
+                    # Strip the prefix to get the bare DOI identifier
+                    if doi_value.startswith("https://doi.org/"):
+                        doi_value = doi_value[len("https://doi.org/") :]
+                    paper["doi"] = doi_value
+                    paper["doi_url"] = f"https://doi.org/{doi_value}"
 
                 result_papers.append(paper)
 
