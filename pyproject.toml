@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "beautifulsoup4>=4.13.3",
     "httpx>=0.28.1",
-    "mcp[cli]>=1.4.1",
+    "mcp[cli]>=1.4.1,<2",
     "python-dotenv>=1.0.1",
     "lxml>=4.9.3",
     "scholarly>=1.7.0",
@@ -21,7 +21,14 @@ dependencies = [
 dev = [
     "black>=25.1.0",
     "mypy>=1.15.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
 
 [project.scripts]
 mcp-scholar = "mcp_scholar:cli_main"

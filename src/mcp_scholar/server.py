@@ -51,7 +51,6 @@ def sanitize_for_log(s: str, max_len: int = 100) -> str:
 mcp = FastMCP(
     "ScholarServer",
     dependencies=["scholarly", "httpx", "beautifulsoup4"],
-    verbose=True,
     debug=True,
 )
 
