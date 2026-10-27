@@ -8,6 +8,7 @@ import re
 import sys
 import json
 from mcp.server.fastmcp import FastMCP, Context
+from mcp.types import ToolAnnotations
 from mcp_scholar.scholar import (
     search_scholar,
     get_paper_detail,
@@ -116,7 +117,7 @@ def search_prompt() -> str:
 
 
 # 工具函数
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def scholar_search(
     ctx: Context,
     keywords: str,
@@ -204,7 +205,7 @@ async def scholar_search(
         return {"status": "error", "message": "学术搜索服务暂时不可用", "error": str(e)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def adaptive_search(
     ctx: Context,
     keywords: str,
@@ -308,7 +309,7 @@ async def adaptive_search(
         return {"status": "error", "message": "学术搜索服务暂时不可用", "error": str(e)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def paper_detail(ctx: Context, paper_id: str) -> Dict[str, Any]:
     """
     获取论文详细信息
@@ -348,7 +349,7 @@ async def paper_detail(ctx: Context, paper_id: str) -> Dict[str, Any]:
         return {"status": "error", "message": "论文详情服务暂时不可用", "error": str(e)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def paper_references(
     ctx: Context, paper_id: str, count: int = 5, sort_by: str = "relevance"
 ) -> Dict[str, Any]:
@@ -403,7 +404,7 @@ async def paper_references(
         return {"status": "error", "message": "论文引用服务暂时不可用", "error": str(e)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def profile_papers(
     ctx: Context, profile_url: str, count: int = 5, sort_by: str = "relevance"
 ) -> Dict[str, Any]:
@@ -462,7 +463,7 @@ async def profile_papers(
         return {"status": "error", "message": "学者论文服务暂时不可用", "error": str(e)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def summarize_papers(
     ctx: Context,
     topic: str,
@@ -565,7 +566,7 @@ async def summarize_papers(
 
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def search_papers(
     ctx: Context,
     keywords: str,
@@ -633,7 +634,7 @@ async def search_papers(
         return {"status": "error", "message": "学术搜索服务暂时不可用", "error": str(e)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def verify_bibtex(ctx: Context, bibtex: str) -> Dict[str, Any]:
     """
     Verify and enrich BibTeX entries against OpenAlex/Crossref.
@@ -672,7 +673,7 @@ async def verify_bibtex(ctx: Context, bibtex: str) -> Dict[str, Any]:
         return {"status": "error", "message": "BibTeX 核查服务暂时不可用", "error": str(e)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def health_check(ctx: Context) -> str:
     """
     健康检查端点，用于验证服务是否正常运行
