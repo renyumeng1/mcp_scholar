@@ -1,2 +1,8 @@
 .pypirc
 .env
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
