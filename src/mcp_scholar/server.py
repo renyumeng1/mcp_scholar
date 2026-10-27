@@ -4,6 +4,7 @@ MCP Scholar 服务
 """
 
 import logging
+import httpx
 import re
 import sys
 import json
@@ -708,13 +709,35 @@ async def read_paper_sections(ctx: Context, paper_id: str, sections: str = "all"
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, openWorldHint=True))
 async def zotero_save(ctx: Context, paper_id: str, collection: str = "Inbox") -> Dict[str, Any]:
-    """Skeleton: Save paper to Zotero (requires local Zotero API or Web API key)."""
-    return {
-        "status": "not_implemented",
-        "message": "Zotero integration planned. Configure ZOTERO_API_KEY or local API to enable.",
-        "paper_id": paper_id,
-        "collection": collection,
-    }
+    """Save paper metadata to Zotero (requires ZOTERO_API_KEY + ZOTERO_USER_ID or local API)."""
+    import os
+    api_key = os.environ.get("ZOTERO_API_KEY")
+    user_id = os.environ.get("ZOTERO_USER_ID")
+    if not api_key or not user_id:
+        return {"status": "config_missing", "message": "Set ZOTERO_API_KEY and ZOTERO_USER_ID to enable"}
+    try:
+        detail = await get_paper_detail(paper_id)
+        if not detail:
+            return {"status": "error", "message": "Paper not found"}
+        # Minimal item creation via Zotero Web API
+        item = {
+            "itemType": "journalArticle",
+            "title": detail.get("title"),
+            "abstractNote": detail.get("abstract", ""),
+            "url": detail.get("url") or detail.get("doi_url"),
+            "DOI": detail.get("doi"),
+        }
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"https://api.zotero.org/users/{user_id}/items",
+                headers={"Zotero-API-Key": api_key, "Content-Type": "application/json"},
+                json=[item],
+            )
+            if resp.status_code in (200, 201):
+                return {"status": "success", "zotero_response": resp.json()}
+            return {"status": "error", "message": resp.text}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def health_check(ctx: Context) -> str:
