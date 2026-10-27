@@ -694,13 +694,16 @@ async def align_and_enrich(ctx: Context, paper_id: str) -> Dict[str, Any]:
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def read_paper_sections(ctx: Context, paper_id: str, sections: str = "all") -> Dict[str, Any]:
-    """Skeleton: OA PDF section extraction (requires pymupdf / docling in future)."""
-    return {
-        "status": "not_implemented",
-        "message": "PDF section parsing planned for next release. Install pymupdf4llm to enable.",
-        "paper_id": paper_id,
-        "requested_sections": sections,
-    }
+    """Extract sections from OA PDF (uses pymupdf4llm if available)."""
+    from mcp_scholar.enrichment import extract_pdf_sections
+    try:
+        detail = await get_paper_detail(paper_id)
+        pdf_url = detail.get("pdf_url") if detail else None
+        if not pdf_url:
+            return {"status": "no_pdf", "message": "No open-access PDF found"}
+        return await extract_pdf_sections(pdf_url, sections)
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, openWorldHint=True))

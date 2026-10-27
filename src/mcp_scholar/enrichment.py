@@ -43,3 +43,23 @@ def upgrade_bibtex_entry(bibtex: str, formal_info: Optional[Dict] = None) -> str
     if formal_info and formal_info.get("formal_doi"):
         return bibtex + f"\n% Upgraded: formal DOI {formal_info['formal_doi']}"
     return bibtex
+
+
+async def extract_pdf_sections(pdf_url: str, sections: str = "all") -> Dict[str, Any]:
+    """Attempt to extract sections from OA PDF. Falls back gracefully."""
+    try:
+        # Optional dependency
+        import pymupdf4llm
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(pdf_url)
+            if resp.status_code == 200:
+                # Save temp and extract
+                tmp = Path("/tmp/paper.pdf")
+                tmp.write_bytes(resp.content)
+                md = pymupdf4llm.to_markdown(str(tmp))
+                return {"status": "success", "markdown": md[:8000], "note": "truncated"}
+    except ImportError:
+        return {"status": "dependency_missing", "message": "Install pymupdf4llm for full PDF parsing"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    return {"status": "no_pdf"}

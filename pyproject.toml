@@ -15,6 +15,7 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "lxml>=4.9.3",
     "scholarly>=1.7.0",
+    # optional: pymupdf4llm for PDF parsing
 ]
 
 [dependency-groups]
