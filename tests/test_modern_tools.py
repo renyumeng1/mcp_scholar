@@ -50,3 +50,19 @@ def test_enrichment_module_imports():
     from mcp_scholar.enrichment import align_preprint_to_published, upgrade_bibtex_entry
     assert callable(align_preprint_to_published)
     assert callable(upgrade_bibtex_entry)
+
+def test_venue_tier():
+    from mcp_scholar.venue_tiers import get_venue_tier
+    assert get_venue_tier("NeurIPS 2023") == "CCF-A"
+    assert get_venue_tier("ICRA") == "CCF-B"
+    assert get_venue_tier("Unknown Workshop") is None
+
+def test_deduplicate():
+    from mcp_scholar.scholar import deduplicate_papers
+    papers = [
+        {"title": "Attention Is All You Need", "doi": "10.1/abc"},
+        {"title": "attention is all you need", "doi": "10.1/abc"},
+        {"title": "Another Paper", "doi": ""},
+    ]
+    out = deduplicate_papers(papers)
+    assert len(out) == 2
