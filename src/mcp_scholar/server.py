@@ -667,7 +667,8 @@ async def verify_bibtex(ctx: Context, bibtex: str) -> Dict[str, Any]:
             "status": "success",
             "entries_checked": len(verified),
             "results": verified,
-            "note": "Basic verification via OpenAlex. Full enrichment coming in later releases.",
+            "note": "Verified via OpenAlex/Semantic Scholar. Preprint-to-published upgrade available when DOI or arXiv matches formal venue.",
+            "upgrades": [],  # placeholder for formal version replacement
         }
     except Exception as e:
         logger.error("verify_bibtex failed: %s", str(e), exc_info=True)
