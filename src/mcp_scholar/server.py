@@ -9,6 +9,7 @@ import sys
 import json
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations
+from mcp_scholar.enrichment import align_preprint_to_published, upgrade_bibtex_entry
 from mcp_scholar.scholar import (
     search_scholar,
     get_paper_detail,
@@ -674,6 +675,43 @@ async def verify_bibtex(ctx: Context, bibtex: str) -> Dict[str, Any]:
         logger.error("verify_bibtex failed: %s", str(e), exc_info=True)
         return {"status": "error", "message": "BibTeX 核查服务暂时不可用", "error": str(e)}
 
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
+async def align_and_enrich(ctx: Context, paper_id: str) -> Dict[str, Any]:
+    """Align preprint to published version and enrich metadata."""
+    if not is_valid_paper_id(paper_id):
+        return {"status": "error", "message": "无效的论文ID"}
+    try:
+        detail = await get_paper_detail(paper_id)
+        if not detail:
+            return {"status": "error", "message": "未找到论文"}
+        enriched = await align_preprint_to_published(detail)
+        return {"status": "success", "paper": enriched}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
+async def read_paper_sections(ctx: Context, paper_id: str, sections: str = "all") -> Dict[str, Any]:
+    """Skeleton: OA PDF section extraction (requires pymupdf / docling in future)."""
+    return {
+        "status": "not_implemented",
+        "message": "PDF section parsing planned for next release. Install pymupdf4llm to enable.",
+        "paper_id": paper_id,
+        "requested_sections": sections,
+    }
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, openWorldHint=True))
+async def zotero_save(ctx: Context, paper_id: str, collection: str = "Inbox") -> Dict[str, Any]:
+    """Skeleton: Save paper to Zotero (requires local Zotero API or Web API key)."""
+    return {
+        "status": "not_implemented",
+        "message": "Zotero integration planned. Configure ZOTERO_API_KEY or local API to enable.",
+        "paper_id": paper_id,
+        "collection": collection,
+    }
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def health_check(ctx: Context) -> str:
