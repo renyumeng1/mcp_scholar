@@ -1,7 +1,8 @@
 """Lightweight CCF / venue tier mapping (partial, extendable)."""
-from typing import Optional
+import re
+from typing import Optional, Tuple
 
-# Simplified CCF-A/B/C examples (expand as needed)
+# Simplified CCF-A/B/C examples. Matching prefers the longest key.
 CCF_A = {
     "neurips", "nips", "icml", "iclr", "aaai", "ijcai", "cvpr", "iccv", "eccv",
     "acl", "emnlp", "naacl", "kdd", "www", "sigir", "sigmod", "vldb", "icde",
@@ -10,24 +11,27 @@ CCF_A = {
 }
 CCF_B = {
     "icra", "iros", "rss", "wacv", "bmvc", "coling", "eacl",
-    "icdm", "sdm", "cikm", "recsys", "wsdm",
+    "icdm", "sdm", "cikm", "recsys", "wsdm", "icassp",
 }
 CCF_C = {
     "icpr", "accv", "icann", "ijcnn",
 }
 
 
-def get_venue_tier(venue: str) -> Optional[str]:
+def match_venue(venue: str) -> Tuple[Optional[str], int]:
+    """Return the tier and the length of the most specific matching key."""
     if not venue:
-        return None
-    v = venue.lower().replace(" ", "").replace("-", "")
-    for key in CCF_A:
-        if key in v:
-            return "CCF-A"
-    for key in CCF_B:
-        if key in v:
-            return "CCF-B"
-    for key in CCF_C:
-        if key in v:
-            return "CCF-C"
-    return None
+        return None, 0
+    compact = re.sub(r"[^a-z0-9]", "", venue.lower())
+    best_tier = None
+    best_len = 0
+    for tier, keys in (("CCF-A", CCF_A), ("CCF-B", CCF_B), ("CCF-C", CCF_C)):
+        for key in keys:
+            if key in compact and len(key) > best_len:
+                best_tier = tier
+                best_len = len(key)
+    return best_tier, best_len
+
+
+def get_venue_tier(venue: str) -> Optional[str]:
+    return match_venue(venue)[0]

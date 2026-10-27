@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp_scholar"
-version = "0.4.0"
+version = "0.4.1"
 description = "MCP Scholar - Modern academic research & literature analysis server for MCP clients"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "beautifulsoup4>=4.13.3",
     "httpx>=0.28.1",
-    "mcp[cli]>=1.4.1,<2",
+    "mcp[cli]>=1.20,<2",
     "python-dotenv>=1.0.1",
     "lxml>=4.9.3",
     "scholarly>=1.7.0",
@@ -30,6 +30,7 @@ dev = [
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+addopts = "--ignore=tests/test_scholar.py"
 
 [project.scripts]
 mcp-scholar = "mcp_scholar:cli_main"

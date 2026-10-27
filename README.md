@@ -22,11 +22,11 @@
 
 ### Overview
 
-**MCP Scholar** (`mcp-scholar`) is a lightweight, extensible Model Context Protocol (MCP) server designed for academic researchers and AI agents. It empowers MCP-compatible clients—such as **Claude Desktop**, **Claude Code**, **Cursor**, and **Cherry Studio**—to search academic literature across multiple sources (OpenAlex primary + Google Scholar fallback), inspect paper details and references, analyze researcher profiles, and verify citations directly within conversational or agentic workflows.
+**MCP Scholar** (`mcp-scholar`) is a lightweight, extensible Model Context Protocol (MCP) server designed for academic researchers and AI agents. It empowers MCP-compatible clients—such as **Claude Desktop**, **Claude Code**, **Cursor**, and **Cherry Studio**—to search academic literature across multiple sources (OpenAlex primary, Semantic Scholar when OpenAlex is thin), inspect paper details and references, analyze researcher profiles, and verify citations directly within conversational or agentic workflows.
 
-### ✨ Key Features (v0.3.0)
+### ✨ Key Features (v0.4.1)
 
-- 🔎 **Unified Multi-Source Search**: Single `search_papers` tool with strategy control (`exact` / `adaptive` / `hybrid`). OpenAlex as primary structured source, Google Scholar as fallback.
+- 🔎 **Unified Multi-Source Search**: Single `search_papers` tool with strategy control (`exact` / `adaptive` / `hybrid`). OpenAlex as the primary source, with Semantic Scholar used when OpenAlex returns too few results.
 - 📄 **Deep Paper Inspection**: Retrieve comprehensive metadata, full abstracts, and reference lists.
 - 👨‍🔬 **Scholar Profile Analytics**: Parse author profiles for high-impact publications.
 - ✅ **BibTeX Verification**: Cross-check and enrich BibTeX entries against Crossref/OpenAlex.
@@ -93,9 +93,9 @@ uv run mcp-scholar
 
 **MCP Scholar**（`mcp-scholar`）是基于 **模型上下文协议（MCP）** 的学术文献检索与分析服务端。它可无缝接入 Claude Desktop、Claude Code、Cursor、Cherry Studio 等客户端，支持多源学术检索、论文详情与引文溯源、学者主页分析以及 BibTeX 真实性核查。
 
-### ✨ 核心特性 (v0.3.0)
+### ✨ 核心特性 (v0.4.1)
 
-- 🔎 **统一多源检索**：`search_papers` 工具支持 `exact` / `adaptive` / `hybrid` 策略。OpenAlex 为主力结构化源，Google Scholar 为 fallback。
+- 🔎 **统一多源检索**：`search_papers` 工具支持 `exact` / `adaptive` / `hybrid` 策略。OpenAlex 为主力来源；结果太少时再用 Semantic Scholar 补齐。
 - 📄 **单篇详情与引文**：完整元数据、摘要与参考文献。
 - 👨‍🔬 **学者主页分析**：提取高被引代表作。
 - ✅ **BibTeX 核查**：通过 Crossref/OpenAlex 核验并补全文献信息。

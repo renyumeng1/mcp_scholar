@@ -10,19 +10,26 @@ import sys
 import json
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations
-from mcp_scholar.enrichment import align_preprint_to_published, upgrade_bibtex_entry
+from mcp_scholar.enrichment import (
+    align_preprint_to_published,
+    find_zotero_collection_key,
+    parse_bibtex_entries,
+    upgrade_bibtex_entry,
+)
 from mcp_scholar.scholar import (
-    search_scholar,
+    AuthorNotFound,
+    extract_profile_id_from_url,
     get_paper_detail,
     get_paper_references,
     parse_profile,
-    extract_profile_id_from_url,
+    search_scholar,
+    titles_match,
 )
 from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger(__name__)
 # 设置日志级别
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 def is_valid_paper_id(paper_id: str) -> bool:
@@ -50,11 +57,33 @@ def sanitize_for_log(s: str, max_len: int = 100) -> str:
     return s[:max_len]
 
 
+
+def present_paper(paper: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a paper record for tool responses."""
+    return {
+        "title": paper.get("title") or "",
+        "authors": paper.get("authors") or "",
+        "abstract": paper.get("abstract") or "",
+        "abstract_source": paper.get("abstract_source") or "",
+        "abstract_quality": paper.get("abstract_quality") or "",
+        "citations": paper.get("citations", 0),
+        "year": paper.get("year", "Unknown"),
+        "paper_id": paper.get("paper_id") or "",
+        "venue": paper.get("venue") or "",
+        "venue_tier": paper.get("venue_tier"),
+        "url": paper.get("url") or "",
+        "doi": paper.get("doi") or "",
+        "doi_url": paper.get("doi_url") or "",
+        "pdf_url": paper.get("pdf_url") or "",
+        "source": paper.get("source") or "",
+    }
+
+
 # 创建MCP服务器
 mcp = FastMCP(
     "ScholarServer",
     dependencies=["scholarly", "httpx", "beautifulsoup4"],
-    debug=True,
+    debug=False,
 )
 
 # 预设提示词常量
@@ -172,23 +201,7 @@ async def scholar_search(
             year_end=year_end,
         )
 
-        papers = []
-        for p in results:
-            papers.append(
-                {
-                    "title": p["title"],
-                    "authors": p["authors"],
-                    "abstract": p["abstract"],
-                    "abstract_source": p.get("abstract_source", "Google Scholar"),
-                    "abstract_quality": p.get("abstract_quality", "基本"),
-                    "citations": p["citations"],
-                    "year": p.get("year", "Unknown"),
-                    "paper_id": p.get("paper_id", None),
-                    "venue": p.get("venue", ""),
-                    "url": p.get("url", ""),  # 添加URL
-                    "doi_url": p.get("doi_url", ""),  # 添加DOI URL
-                }
-            )
+        papers = [present_paper(p) for p in results]
 
         return {
             "status": "success",
@@ -278,21 +291,7 @@ async def adaptive_search(
             search_mode = "模糊搜索(由于精确搜索结果不足)"
             final_results = fuzzy_results
 
-        papers = []
-        for p in final_results:
-            papers.append(
-                {
-                    "title": p["title"],
-                    "authors": p["authors"],
-                    "abstract": p["abstract"],
-                    "citations": p["citations"],
-                    "year": p.get("year", "Unknown"),
-                    "paper_id": p.get("paper_id", None),
-                    "venue": p.get("venue", ""),
-                    "url": p.get("url", ""),  # 添加URL
-                    "doi_url": p.get("doi_url", ""),  # 添加DOI URL
-                }
-            )
+        papers = [present_paper(p) for p in final_results]
 
         return {
             "status": "success",
@@ -379,20 +378,7 @@ async def paper_references(
         logger.info("正在获取论文ID为 %s 的引用...", sanitize_for_log(paper_id))
         references = await get_paper_references(paper_id, count, sort_by=sort_by)
 
-        refs = []
-        for ref in references:
-            refs.append(
-                {
-                    "title": ref["title"],
-                    "authors": ref["authors"],
-                    "abstract": ref["abstract"],
-                    "citations": ref["citations"],
-                    "year": ref.get("year", "Unknown"),
-                    "paper_id": ref.get("paper_id", None),
-                    "url": ref.get("url", ""),  # 添加URL
-                    "doi_url": ref.get("doi_url", ""),  # 添加DOI URL
-                }
-            )
+        refs = [present_paper(ref) for ref in references]
 
         return {
             "status": "success",
@@ -408,7 +394,12 @@ async def paper_references(
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def profile_papers(
-    ctx: Context, profile_url: str, count: int = 5, sort_by: str = "relevance"
+    ctx: Context,
+    profile_url: str,
+    count: int = 5,
+    sort_by: str = "relevance",
+    year_start: Optional[int] = None,
+    year_end: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     获取学者的论文
@@ -435,29 +426,23 @@ async def profile_papers(
             logger.error("无法从URL中提取学者ID")
             return {"status": "error", "message": "无法从URL中提取学者ID"}
 
-        papers = await parse_profile(profile_id, count, sort_by=sort_by)
+        papers = await parse_profile(
+            profile_id,
+            count,
+            sort_by=sort_by,
+            min_year=year_start,
+            max_year=year_end,
+        )
 
-        result_papers = []
-        for p in papers:
-            result_papers.append(
-                {
-                    "title": p["title"],
-                    "authors": p["authors"],
-                    "abstract": p["abstract"],
-                    "citations": p["citations"],
-                    "year": p.get("year", "Unknown"),
-                    "venue": p.get("venue", ""),
-                    "paper_id": p.get("paper_id", None),
-                    "url": p.get("url", ""),  # 添加URL
-                    "doi_url": p.get("doi_url", ""),  # 添加DOI URL
-                }
-            )
+        result_papers = [present_paper(p) for p in papers]
 
         return {
             "status": "success",
             "papers": result_papers,
             "sort_by": sort_by,
         }
+    except AuthorNotFound as exc:
+        return {"status": "error", "message": str(exc)}
     except Exception as e:
         error_msg = f"获取学者论文失败: {str(e)}"
         # 移除错误通知
@@ -548,6 +533,9 @@ async def summarize_papers(
             summary += f"### {i+1}. {paper['title']}\n"
             summary += f"**作者**: {paper['authors']}\n"
             summary += f"**年份**: {paper.get('year', '未知')}\n"
+            if paper.get("venue"):
+                tier = f" ({paper.get('venue_tier')})" if paper.get("venue_tier") else ""
+                summary += f"**期刊/会议**: {paper.get('venue')}{tier}\n"
             summary += f"**引用量**: {paper['citations']}\n"
             if paper.get("url"):
                 summary += (
@@ -609,26 +597,18 @@ async def search_papers(
             results = await search_scholar(keywords, count, fuzzy_search=True, sort_by=sort_by, year_start=year_start, year_end=year_end)
             mode = "hybrid"
 
-        papers = []
-        for p in results:
-            papers.append({
-                "title": p.get("title"),
-                "authors": p.get("authors"),
-                "abstract": p.get("abstract", ""),
-                "citations": p.get("citations", 0),
-                "year": p.get("year"),
-                "paper_id": p.get("paper_id"),
-                "venue": p.get("venue", ""),
-                "url": p.get("url", ""),
-                "doi_url": p.get("doi_url", ""),
-            })
+        papers = [present_paper(p) for p in results]
 
+        sources = []
+        for paper in papers:
+            if paper.get("source") and paper["source"] not in sources:
+                sources.append(paper["source"])
         return {
             "status": "success",
             "papers": papers,
             "strategy": strategy,
             "search_mode": mode,
-            "source": "OpenAlex (primary); Google Scholar fallback planned",
+            "source": " + ".join(sources) if sources else "OpenAlex",
             "total_results": len(papers),
             "sort_by": sort_by,
         }
@@ -639,45 +619,93 @@ async def search_papers(
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def verify_bibtex(ctx: Context, bibtex: str) -> Dict[str, Any]:
-    """
-    Verify and enrich BibTeX entries against OpenAlex/Crossref.
-
-    Args:
-        bibtex: Raw BibTeX string (one or more entries)
-
-    Returns:
-        Dict with verification results and enriched entries
-    """
+    """Verify BibTeX by DOI first, then by a strict title match."""
     try:
-        # Simple extraction of titles / DOIs for demo verification
-        titles = re.findall(r'title\s*=\s*\{([^}]+)\}', bibtex, re.IGNORECASE)
-        dois = re.findall(r'doi\s*=\s*\{([^}]+)\}', bibtex, re.IGNORECASE)
-
+        entries = parse_bibtex_entries(bibtex)[:5]
+        if not entries:
+            return {"status": "error", "message": "没有解析到 BibTeX 条目"}
         verified = []
-        for title in titles[:5]:  # limit for safety
-            # Use existing search to verify existence
-            results = await search_scholar(title, 1, fuzzy_search=True)
-            exists = len(results) > 0
-            verified.append({
-                "title": title,
-                "exists": exists,
-                "matched": results[0].get("title") if exists else None,
-                "doi": results[0].get("doi") if exists else None,
-            })
-
-        # Attempt preprint upgrades for matched entries
         upgrades = []
-        for item in verified:
-            if item.get("exists") and item.get("doi"):
-                # lightweight alignment
-                upgrades.append({"title": item["title"], "suggested_doi": item["doi"]})
-
+        for entry in entries:
+            item = {
+                "title": entry.get("title") or "",
+                "submitted_doi": entry.get("doi") or "",
+                "doi": entry.get("doi") or "",
+                "exists": False,
+                "title_matches": False,
+                "match_via": None,
+            }
+            detail = None
+            if entry.get("doi"):
+                detail = await get_paper_detail(entry["doi"])
+                if detail:
+                    item["match_via"] = "doi"
+            if detail is None and entry.get("title"):
+                year_text = str(entry.get("year") or "")
+                year_num = int(year_text) if year_text.isdigit() else None
+                found = await search_scholar(
+                    entry["title"],
+                    5,
+                    fuzzy_search=False,
+                    year_start=year_num,
+                    year_end=year_num,
+                )
+                if not found and year_num:
+                    found = await search_scholar(entry["title"], 5, fuzzy_search=False)
+                detail = next(
+                    (
+                        paper
+                        for paper in found
+                        if titles_match(entry["title"], paper.get("title") or "")
+                    ),
+                    None,
+                )
+                if detail:
+                    item["match_via"] = "title"
+            if detail:
+                matched_title = detail.get("title") or ""
+                item.update(
+                    {
+                        "exists": True,
+                        "matched": matched_title,
+                        "matched_year": detail.get("year"),
+                        "matched_venue": detail.get("venue") or "",
+                        "venue_tier": detail.get("venue_tier"),
+                        "doi": detail.get("doi") or item["doi"],
+                        "doi_url": detail.get("doi_url") or "",
+                        "paper_id": detail.get("paper_id") or "",
+                        "title_matches": (
+                            titles_match(entry.get("title") or "", matched_title)
+                            if entry.get("title")
+                            else True
+                        ),
+                    }
+                )
+                aligned_input = dict(detail)
+                if entry.get("doi"):
+                    aligned_input["requested_id"] = entry["doi"]
+                aligned = await align_preprint_to_published(aligned_input)
+                formal = aligned.get("published_version") or {}
+                formal_doi = (formal.get("formal_doi") or "").lower()
+                current_doi = (detail.get("doi") or "").lower()
+                if formal_doi and formal_doi != current_doi:
+                    upgrades.append(
+                        {
+                            "title": entry.get("title") or matched_title,
+                            "from_doi": detail.get("doi") or entry.get("doi") or "",
+                            "suggested_doi": formal.get("formal_doi"),
+                            "suggested_venue": formal.get("formal_venue"),
+                            "suggested_year": formal.get("formal_year"),
+                        }
+                    )
+                    item["upgraded_bibtex"] = upgrade_bibtex_entry(entry["raw"], formal)
+            verified.append(item)
         return {
             "status": "success",
             "entries_checked": len(verified),
             "results": verified,
             "upgrades": upgrades,
-            "note": "Verified. Use upgrades list to replace arXiv entries with formal DOIs.",
+            "note": "DOI 优先核对。只有标题和年份都吻合的正式版本才会出现在 upgrades。",
         }
     except Exception as e:
         logger.error("verify_bibtex failed: %s", str(e), exc_info=True)
@@ -702,11 +730,15 @@ async def align_and_enrich(ctx: Context, paper_id: str) -> Dict[str, Any]:
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def read_paper_sections(ctx: Context, paper_id: str, sections: str = "all") -> Dict[str, Any]:
-    """Extract sections from OA PDF (uses pymupdf4llm if available)."""
+    """Extract sections from an open-access PDF when pymupdf4llm is installed."""
     from mcp_scholar.enrichment import extract_pdf_sections
+    if not is_valid_paper_id(paper_id):
+        return {"status": "error", "message": "无效的论文ID"}
     try:
         detail = await get_paper_detail(paper_id)
-        pdf_url = detail.get("pdf_url") if detail else None
+        if not detail:
+            return {"status": "error", "message": "未找到指定ID的论文"}
+        pdf_url = detail.get("pdf_url")
         if not pdf_url:
             return {"status": "no_pdf", "message": "No open-access PDF found"}
         return await extract_pdf_sections(pdf_url, sections)
@@ -716,8 +748,10 @@ async def read_paper_sections(ctx: Context, paper_id: str, sections: str = "all"
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, openWorldHint=True))
 async def zotero_save(ctx: Context, paper_id: str, collection: str = "Inbox") -> Dict[str, Any]:
-    """Save paper metadata to Zotero (requires ZOTERO_API_KEY + ZOTERO_USER_ID or local API)."""
+    """Save paper metadata to Zotero when API credentials are configured."""
     import os
+    if not is_valid_paper_id(paper_id):
+        return {"status": "error", "message": "无效的论文ID"}
     api_key = os.environ.get("ZOTERO_API_KEY")
     user_id = os.environ.get("ZOTERO_USER_ID")
     if not api_key or not user_id:
@@ -726,22 +760,39 @@ async def zotero_save(ctx: Context, paper_id: str, collection: str = "Inbox") ->
         detail = await get_paper_detail(paper_id)
         if not detail:
             return {"status": "error", "message": "Paper not found"}
-        # Minimal item creation via Zotero Web API
         item = {
             "itemType": "journalArticle",
             "title": detail.get("title"),
             "abstractNote": detail.get("abstract", ""),
             "url": detail.get("url") or detail.get("doi_url"),
-            "DOI": detail.get("doi"),
+            "DOI": detail.get("doi") or "",
         }
+        headers = {"Zotero-API-Key": api_key, "Content-Type": "application/json"}
         async with httpx.AsyncClient(timeout=15.0) as client:
+            collection_status = None
+            if collection:
+                listed = await client.get(
+                    f"https://api.zotero.org/users/{user_id}/collections",
+                    headers={"Zotero-API-Key": api_key},
+                )
+                if listed.status_code == 200:
+                    collection_key = find_zotero_collection_key(listed.json(), collection)
+                    if collection_key:
+                        item["collections"] = [collection_key]
+                    else:
+                        collection_status = "not_found"
+                else:
+                    collection_status = "lookup_failed"
             resp = await client.post(
                 f"https://api.zotero.org/users/{user_id}/items",
-                headers={"Zotero-API-Key": api_key, "Content-Type": "application/json"},
+                headers=headers,
                 json=[item],
             )
             if resp.status_code in (200, 201):
-                return {"status": "success", "zotero_response": resp.json()}
+                payload = {"status": "success", "zotero_response": resp.json()}
+                if collection_status:
+                    payload["collection_status"] = collection_status
+                return payload
             return {"status": "error", "message": resp.text}
     except Exception as e:
         return {"status": "error", "message": str(e)}
