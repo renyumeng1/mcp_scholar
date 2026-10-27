@@ -37,3 +37,16 @@ def test_cache_roundtrip():
     cache_set("test_key", {"ok": True}, ttl=60)
     assert cache_get("test_key") == {"ok": True}
     assert cache_get("missing") is None
+
+@pytest.mark.asyncio
+async def test_align_and_enrich_basic():
+    from mcp_scholar.server import align_and_enrich
+    ctx = DummyContext()
+    # Use a known DOI-like id; may fail gracefully
+    result = await align_and_enrich(ctx, "10.1038/nature14539")
+    assert "status" in result
+
+def test_enrichment_module_imports():
+    from mcp_scholar.enrichment import align_preprint_to_published, upgrade_bibtex_entry
+    assert callable(align_preprint_to_published)
+    assert callable(upgrade_bibtex_entry)

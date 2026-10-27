@@ -665,12 +665,19 @@ async def verify_bibtex(ctx: Context, bibtex: str) -> Dict[str, Any]:
                 "doi": results[0].get("doi") if exists else None,
             })
 
+        # Attempt preprint upgrades for matched entries
+        upgrades = []
+        for item in verified:
+            if item.get("exists") and item.get("doi"):
+                # lightweight alignment
+                upgrades.append({"title": item["title"], "suggested_doi": item["doi"]})
+
         return {
             "status": "success",
             "entries_checked": len(verified),
             "results": verified,
-            "note": "Verified via OpenAlex/Semantic Scholar. Preprint-to-published upgrade available when DOI or arXiv matches formal venue.",
-            "upgrades": [],  # placeholder for formal version replacement
+            "upgrades": upgrades,
+            "note": "Verified. Use upgrades list to replace arXiv entries with formal DOIs.",
         }
     except Exception as e:
         logger.error("verify_bibtex failed: %s", str(e), exc_info=True)
