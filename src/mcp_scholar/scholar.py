@@ -10,6 +10,7 @@ import asyncio
 import os
 from typing import List, Dict, Any, Optional
 from mcp_scholar.cache import cache_get, cache_set
+from mcp_scholar.venue_tiers import get_venue_tier
 from urllib.parse import quote_plus
 from dotenv import load_dotenv
 from pathlib import Path
@@ -202,7 +203,9 @@ async def search_scholar(
     # Annotate source
     for r in results:
         r.setdefault("source", source)
+        r["venue_tier"] = get_venue_tier(r.get("venue", ""))
 
+    results = deduplicate_papers(results)
     cache_set(cache_key, results)
     return results
 
@@ -755,3 +758,23 @@ async def parse_profile(
     except Exception as e:
         logger.error(f"解析学者档案时出错: {str(e)}")
         return []
+
+
+def deduplicate_papers(papers: list) -> list:
+    """Smarter dedup by DOI then normalized title."""
+    seen_doi = set()
+    seen_title = set()
+    out = []
+    for p in papers:
+        doi = (p.get("doi") or "").lower().replace("https://doi.org/", "")
+        title = (p.get("title") or "").lower().strip()
+        if doi and doi in seen_doi:
+            continue
+        if title and title in seen_title:
+            continue
+        if doi:
+            seen_doi.add(doi)
+        if title:
+            seen_title.add(title)
+        out.append(p)
+    return out

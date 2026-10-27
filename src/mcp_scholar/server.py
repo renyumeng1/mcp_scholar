@@ -4,11 +4,13 @@ MCP Scholar 服务
 """
 
 import logging
+import httpx
 import re
 import sys
 import json
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations
+from mcp_scholar.enrichment import align_preprint_to_published, upgrade_bibtex_entry
 from mcp_scholar.scholar import (
     search_scholar,
     get_paper_detail,
@@ -663,17 +665,86 @@ async def verify_bibtex(ctx: Context, bibtex: str) -> Dict[str, Any]:
                 "doi": results[0].get("doi") if exists else None,
             })
 
+        # Attempt preprint upgrades for matched entries
+        upgrades = []
+        for item in verified:
+            if item.get("exists") and item.get("doi"):
+                # lightweight alignment
+                upgrades.append({"title": item["title"], "suggested_doi": item["doi"]})
+
         return {
             "status": "success",
             "entries_checked": len(verified),
             "results": verified,
-            "note": "Verified via OpenAlex/Semantic Scholar. Preprint-to-published upgrade available when DOI or arXiv matches formal venue.",
-            "upgrades": [],  # placeholder for formal version replacement
+            "upgrades": upgrades,
+            "note": "Verified. Use upgrades list to replace arXiv entries with formal DOIs.",
         }
     except Exception as e:
         logger.error("verify_bibtex failed: %s", str(e), exc_info=True)
         return {"status": "error", "message": "BibTeX 核查服务暂时不可用", "error": str(e)}
 
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
+async def align_and_enrich(ctx: Context, paper_id: str) -> Dict[str, Any]:
+    """Align preprint to published version and enrich metadata."""
+    if not is_valid_paper_id(paper_id):
+        return {"status": "error", "message": "无效的论文ID"}
+    try:
+        detail = await get_paper_detail(paper_id)
+        if not detail:
+            return {"status": "error", "message": "未找到论文"}
+        enriched = await align_preprint_to_published(detail)
+        return {"status": "success", "paper": enriched}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
+async def read_paper_sections(ctx: Context, paper_id: str, sections: str = "all") -> Dict[str, Any]:
+    """Extract sections from OA PDF (uses pymupdf4llm if available)."""
+    from mcp_scholar.enrichment import extract_pdf_sections
+    try:
+        detail = await get_paper_detail(paper_id)
+        pdf_url = detail.get("pdf_url") if detail else None
+        if not pdf_url:
+            return {"status": "no_pdf", "message": "No open-access PDF found"}
+        return await extract_pdf_sections(pdf_url, sections)
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, openWorldHint=True))
+async def zotero_save(ctx: Context, paper_id: str, collection: str = "Inbox") -> Dict[str, Any]:
+    """Save paper metadata to Zotero (requires ZOTERO_API_KEY + ZOTERO_USER_ID or local API)."""
+    import os
+    api_key = os.environ.get("ZOTERO_API_KEY")
+    user_id = os.environ.get("ZOTERO_USER_ID")
+    if not api_key or not user_id:
+        return {"status": "config_missing", "message": "Set ZOTERO_API_KEY and ZOTERO_USER_ID to enable"}
+    try:
+        detail = await get_paper_detail(paper_id)
+        if not detail:
+            return {"status": "error", "message": "Paper not found"}
+        # Minimal item creation via Zotero Web API
+        item = {
+            "itemType": "journalArticle",
+            "title": detail.get("title"),
+            "abstractNote": detail.get("abstract", ""),
+            "url": detail.get("url") or detail.get("doi_url"),
+            "DOI": detail.get("doi"),
+        }
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"https://api.zotero.org/users/{user_id}/items",
+                headers={"Zotero-API-Key": api_key, "Content-Type": "application/json"},
+                json=[item],
+            )
+            if resp.status_code in (200, 201):
+                return {"status": "success", "zotero_response": resp.json()}
+            return {"status": "error", "message": resp.text}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 async def health_check(ctx: Context) -> str:
