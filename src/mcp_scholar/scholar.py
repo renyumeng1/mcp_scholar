@@ -9,6 +9,7 @@ import httpx
 import asyncio
 import os
 from typing import List, Dict, Any, Optional
+from mcp_scholar.cache import cache_get, cache_set
 from urllib.parse import quote_plus
 from dotenv import load_dotenv
 from pathlib import Path
@@ -134,6 +135,12 @@ async def search_scholar(
     year_start: Optional[int] = None,
     year_end: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
+    cache_key = f"search:{query}:{count}:{fuzzy_search}:{sort_by}:{year_start}:{year_end}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        logger.info("Cache hit for search: %s", query[:50])
+        return cached
+
     """
     使用OpenAlex API搜索学术论文
 
@@ -239,6 +246,7 @@ async def search_scholar(
                     results.append(paper)
 
                 # 只返回需要的数量
+                cache_set(cache_key, results[:count])
                 return results[:count]
             else:
                 logger.error(f"OpenAlex API搜索错误: {response.status_code} - {response.text}")

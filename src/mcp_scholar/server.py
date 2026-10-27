@@ -626,6 +626,7 @@ async def search_papers(
             "papers": papers,
             "strategy": strategy,
             "search_mode": mode,
+            "source": "OpenAlex (primary); Google Scholar fallback planned",
             "total_results": len(papers),
             "sort_by": sort_by,
         }

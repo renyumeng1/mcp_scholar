@@ -31,3 +31,9 @@ def test_paper_id_validation_still_works():
     assert is_valid_paper_id("10.1038/nature12373")
     assert is_valid_paper_id("W123456789")
     assert not is_valid_paper_id("<script>alert(1)</script>")
+
+def test_cache_roundtrip():
+    from mcp_scholar.cache import cache_set, cache_get
+    cache_set("test_key", {"ok": True}, ttl=60)
+    assert cache_get("test_key") == {"ok": True}
+    assert cache_get("missing") is None
