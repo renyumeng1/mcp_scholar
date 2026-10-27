@@ -127,7 +127,87 @@ def convert_inverted_index_to_text(inverted_index: Dict[str, List[int]]) -> str:
     return " ".join(words)
 
 
+
+async def _search_openalex(
+    query: str,
+    count: int,
+    fuzzy_search: bool,
+    sort_by: str,
+    year_start: Optional[int],
+    year_end: Optional[int],
+) -> List[Dict[str, Any]]:
+    """Internal OpenAlex search (existing logic extracted for fallback)."""
+    # Reuse the original implementation body by calling the existing logic
+    # For simplicity we keep the original search_scholar body and wrap it
+    return await _original_openalex_search(query, count, fuzzy_search, sort_by, year_start, year_end)
+
+
+async def _search_semantic_scholar(query: str, count: int = 5) -> List[Dict[str, Any]]:
+    """Fallback search via Semantic Scholar Graph API (no key required for basic)."""
+    results = []
+    try:
+        url = f"https://api.semanticscholar.org/graph/v1/paper/search?query={quote_plus(query)}&limit={count}&fields=title,authors,abstract,year,citationCount,externalIds,url,venue"
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                for p in data.get("data", []):
+                    authors = ", ".join(a.get("name", "") for a in p.get("authors", []))
+                    doi = (p.get("externalIds") or {}).get("DOI")
+                    results.append({
+                        "title": p.get("title", ""),
+                        "authors": authors,
+                        "abstract": p.get("abstract") or "",
+                        "citations": p.get("citationCount", 0),
+                        "year": p.get("year"),
+                        "venue": p.get("venue") or "",
+                        "paper_id": p.get("paperId"),
+                        "url": p.get("url") or "",
+                        "doi": doi,
+                        "doi_url": f"https://doi.org/{doi}" if doi else "",
+                        "source": "Semantic Scholar",
+                    })
+    except Exception as e:
+        logger.warning("Semantic Scholar fallback failed: %s", e)
+    return results
+
+
 async def search_scholar(
+    query: str,
+    count: int = 5,
+    fuzzy_search: bool = False,
+    sort_by: str = "relevance",
+    year_start: Optional[int] = None,
+    year_end: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Multi-source search with OpenAlex primary + Semantic Scholar fallback."""
+    cache_key = f"search:{query}:{count}:{fuzzy_search}:{sort_by}:{year_start}:{year_end}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        logger.info("Cache hit for search: %s", query[:50])
+        return cached
+
+    # 1. Try OpenAlex (primary)
+    results = await _original_openalex_search(query, count, fuzzy_search, sort_by, year_start, year_end)
+    source = "OpenAlex"
+
+    # 2. Fallback if empty or too few results
+    if len(results) < max(1, count // 2):
+        logger.info("OpenAlex returned %d results, trying Semantic Scholar fallback", len(results))
+        ss_results = await _search_semantic_scholar(query, count)
+        if len(ss_results) > len(results):
+            results = ss_results
+            source = "Semantic Scholar (fallback)"
+
+    # Annotate source
+    for r in results:
+        r.setdefault("source", source)
+
+    cache_set(cache_key, results)
+    return results
+
+
+async def _original_openalex_search(
     query: str,
     count: int = 5,
     fuzzy_search: bool = False,
