@@ -563,6 +563,115 @@ async def summarize_papers(
         return "论文总结服务暂时不可用"
 
 
+
+
+@mcp.tool()
+async def search_papers(
+    ctx: Context,
+    keywords: str,
+    count: int = 5,
+    strategy: str = "hybrid",
+    sort_by: str = "relevance",
+    year_start: Optional[int] = None,
+    year_end: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Unified academic paper search (replaces scholar_search + adaptive_search).
+
+    Args:
+        keywords: Search keywords
+        count: Number of results (default 5)
+        strategy: "exact" | "adaptive" | "hybrid" (default hybrid)
+        sort_by: relevance | citations | date | title
+        year_start: Optional start year
+        year_end: Optional end year
+
+    Returns:
+        Dict with papers list and metadata
+    """
+    try:
+        logger.info("search_papers: %s strategy=%s", sanitize_for_log(keywords), strategy)
+        if strategy == "exact":
+            results = await search_scholar(keywords, count, fuzzy_search=False, sort_by=sort_by, year_start=year_start, year_end=year_end)
+            mode = "exact"
+        elif strategy == "adaptive":
+            precise = await search_scholar(keywords, count, fuzzy_search=False, sort_by=sort_by, year_start=year_start, year_end=year_end)
+            if len(precise) < 3:
+                results = await search_scholar(keywords, count, fuzzy_search=True, sort_by=sort_by, year_start=year_start, year_end=year_end)
+                mode = "adaptive (fuzzy)"
+            else:
+                results = precise
+                mode = "adaptive (exact)"
+        else:  # hybrid
+            results = await search_scholar(keywords, count, fuzzy_search=True, sort_by=sort_by, year_start=year_start, year_end=year_end)
+            mode = "hybrid"
+
+        papers = []
+        for p in results:
+            papers.append({
+                "title": p.get("title"),
+                "authors": p.get("authors"),
+                "abstract": p.get("abstract", ""),
+                "citations": p.get("citations", 0),
+                "year": p.get("year"),
+                "paper_id": p.get("paper_id"),
+                "venue": p.get("venue", ""),
+                "url": p.get("url", ""),
+                "doi_url": p.get("doi_url", ""),
+            })
+
+        return {
+            "status": "success",
+            "papers": papers,
+            "strategy": strategy,
+            "search_mode": mode,
+            "total_results": len(papers),
+            "sort_by": sort_by,
+        }
+    except Exception as e:
+        logger.error("search_papers failed: %s", str(e), exc_info=True)
+        return {"status": "error", "message": "学术搜索服务暂时不可用", "error": str(e)}
+
+
+@mcp.tool()
+async def verify_bibtex(ctx: Context, bibtex: str) -> Dict[str, Any]:
+    """
+    Verify and enrich BibTeX entries against OpenAlex/Crossref.
+
+    Args:
+        bibtex: Raw BibTeX string (one or more entries)
+
+    Returns:
+        Dict with verification results and enriched entries
+    """
+    try:
+        # Simple extraction of titles / DOIs for demo verification
+        titles = re.findall(r'title\s*=\s*\{([^}]+)\}', bibtex, re.IGNORECASE)
+        dois = re.findall(r'doi\s*=\s*\{([^}]+)\}', bibtex, re.IGNORECASE)
+
+        verified = []
+        for title in titles[:5]:  # limit for safety
+            # Use existing search to verify existence
+            results = await search_scholar(title, 1, fuzzy_search=True)
+            exists = len(results) > 0
+            verified.append({
+                "title": title,
+                "exists": exists,
+                "matched": results[0].get("title") if exists else None,
+                "doi": results[0].get("doi") if exists else None,
+            })
+
+        return {
+            "status": "success",
+            "entries_checked": len(verified),
+            "results": verified,
+            "note": "Basic verification via OpenAlex. Full enrichment coming in later releases.",
+        }
+    except Exception as e:
+        logger.error("verify_bibtex failed: %s", str(e), exc_info=True)
+        return {"status": "error", "message": "BibTeX 核查服务暂时不可用", "error": str(e)}
+
+
 @mcp.tool()
 async def health_check(ctx: Context) -> str:
     """

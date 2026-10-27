@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp_scholar"
-version = "0.2.2"
-description = "MCP Scholar for Google Scholar search"
+version = "0.3.0"
+description = "MCP Scholar - Modern academic research & literature analysis server for MCP clients"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
